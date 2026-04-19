@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DM Loadout Editor</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar__group">
+            <label>Сет:</label>
+            <select id="setSelect"></select>
+            <button id="btnNewSet" title="Добавить новый сет">＋</button>
+            <button id="btnRenameSet" title="Переименовать текущий сет">✎</button>
+            <button id="btnDeleteSet" title="Удалить текущий сет">🗑</button>
+            <span class="sep"></span>
+            <label>chance:</label>
+            <input type="number" id="setChance" min="0" max="100" step="1" style="width:60px" />
+        </div>
+        <div class="topbar__group">
+            <button id="btnOpen">Открыть loadouts.json</button>
+            <button id="btnSave" class="primary">Сохранить</button>
+            <button id="btnDownload" title="Скачать как файл">⬇</button>
+            <span id="fileStatus" class="status"></span>
+        </div>
+    </header>
+
+    <main class="workspace">
+        <!-- Колонка 1: каталог -->
+        <section class="panel panel--catalog">
+            <div class="panel__head">
+                <input id="catalogSearch" type="search" placeholder="Поиск по classname / имени…" />
+                <select id="catalogSlotFilter">
+                    <option value="">Все слоты</option>
+                </select>
+            </div>
+            <div id="catalogGrid" class="catalog-grid"></div>
+            <div id="catalogStatus" class="status"></div>
+        </section>
+
+        <!-- Колонка 2: персонаж -->
+        <section class="panel panel--character">
+            <div class="panel__head"><strong>Слоты персонажа</strong></div>
+            <div id="characterSlots" class="character-slots"></div>
+            <div class="panel__head"><strong>Вне слотов</strong></div>
+            <div id="extraItems" class="character-extra"></div>
+        </section>
+
+        <!-- Колонка 3: дерево -->
+        <section class="panel panel--tree">
+            <div class="panel__head">
+                <strong>Дерево сета</strong>
+                <button id="btnAddRaw" title="Добавить предмет по classname вручную">＋ classname</button>
+            </div>
+            <div id="treeRoot" class="tree"></div>
+        </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

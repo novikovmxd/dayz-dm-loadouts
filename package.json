@@ -1,0 +1,15 @@
+{
+  "name": "dm-loadout-editor",
+  "version": "1.0.0",
+  "description": "Visual editor for DayZ DM loadouts.json",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "scrape": "node scrape.js",
+    "start": "node serve.js",
+    "test": "node test-roundtrip.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0"
+  }
+}
