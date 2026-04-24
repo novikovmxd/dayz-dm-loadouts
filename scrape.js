@@ -19,10 +19,24 @@ const SKIP_PREFIXES = [
     '/polzovatelskoe', '/soglashenie'
 ];
 
+// Slot classification.
+//
+// Wiki-теги неполные и иногда неверные (напр. SantasBeard без тегов,
+// EyeMask_Christmas с `hats` вместо `face`, Bandana_* с `hats` а не `face`),
+// поэтому первичный сигнал -- classname по regex, а tags идут вторично
+// только для предметов без classname-матча. Этот подход устойчив к изменениям
+// на wiki: пока ванильные DayZ-classname'ы те же, слоты определяются
+// правильно.
 function classifySlot(categorySlug, tagSlugs, classname) {
     const tags = new Set(tagSlugs);
     const cn = classname;
     const cl = cn.toLowerCase();
+
+    // ─── Non-clothes категории (однозначные) ─────────────────────
+    // Classname-фолбэк для weapon'ов которые wiki неверно положил в clothes/other
+    // (видели: Mace, Sword, Derringer -- categorySlug == 'clothes' хотя это оружие).
+    if (/^mace$|^sword$|^katana$|^hatchet$|^machete$|^bayonet$|^axe_/i.test(cn)) return 'Weapon_Melee';
+    if (/^derringer/i.test(cn)) return 'Weapon_Pistol';
 
     if (categorySlug === 'weapons') {
         if (tags.has('pistols') || /glock|fnx|fnp45|cr75|deagle|magnum|mkii|mk2|colt1911|pistol$/i.test(cn)) return 'Weapon_Pistol';
@@ -39,35 +53,12 @@ function classifySlot(categorySlug, tagSlugs, classname) {
     if (categorySlug === 'explosives' || /grenade/i.test(cn)) return 'Grenade';
 
     if (categorySlug === 'containers') {
-        if (/bag$|backpack|courierbag|alicebag|hunterbag|assaultbag|coyotebag|drybag|mountainbag|fieldbag|taloncase/i.test(cn)) return 'Back';
+        if (/bag$|backpack|courierbag|alicebag|hunterbag|assaultbag|coyotebag|drybag|mountainbag|fieldbag|taloncase|sack/i.test(cn)) return 'Back';
         return 'Container';
     }
 
-    if (categorySlug === 'clothes') {
-        // Tag-based first
-        if (tags.has('hats')) return 'Head';
-        if (tags.has('face')) return 'Mask';
-        if (tags.has('eyes')) return 'Eyewear';
-        if (tags.has('torso')) {
-            // Vests look like torso on the wiki — disambiguate by classname
-            if (/vest|platecarrier|pressvest|ukassvest|ttskovest|chestholster|holster|pouches|radiopouch/i.test(cl)) return 'Vest';
-            return 'Body';
-        }
-        if (tags.has('pants')) return 'Legs';
-        if (tags.has('shoes')) return 'Feet';
-        if (tags.has('gloves')) return 'Hands';
-        if (tags.has('arm')) return 'Armband';
-        if (tags.has('belt')) return 'Belt';
-        // Fallback: classname heuristics for untagged clothes
-        if (/helmet|hlmt|cap|hood|mask|bandana|hat|beanie|beret|balaclava$/i.test(cn)) return 'Head';
-        if (/vest|platecarrier|pressvest|ukassvest|ttskovest|chestholster|holster|pouches/i.test(cl)) return 'Vest';
-        if (/pants|jeans|trousers|shorts/i.test(cl)) return 'Legs';
-        if (/boots|shoes|sneakers/i.test(cl)) return 'Feet';
-        if (/gloves/i.test(cl)) return 'Hands';
-        if (/jacket|shirt|hoodie|sweater|parka|coat|pullover|tshirt|tunic|top$/i.test(cl)) return 'Body';
-        if (/armband/i.test(cl)) return 'Armband';
-        return 'Body';
-    }
+    // Sack-предметы в категории clothes (wiki ошибочно туда положил LeatherSack_*)
+    if (/sack/i.test(cn)) return 'Back';
 
     if (categorySlug === 'medical') return 'Medical';
     if (categorySlug === 'food') return 'Food';
@@ -75,6 +66,62 @@ function classifySlot(categorySlug, tagSlugs, classname) {
 
     if (categorySlug === 'animals' || categorySlug === 'zombies' || categorySlug === 'vehicles' || categorySlug === 'autoparts') {
         return 'Skip';
+    }
+
+    // ─── Одежда: classname-based (категорию clothes или пустую принимаем) ─
+    if (categorySlug === 'clothes' || !categorySlug) {
+        // Порядок важен: более специфичные паттерны -- первыми.
+
+        // EYEWEAR -- очки и "гоглы" (включая NVGoggles, SkiGoggles, TacticalGoggles).
+        // Проверяем ПЕРЕД Mask, иначе TacticalGoggles ушло бы в Mask.
+        if (/glasses|goggles/i.test(cn)) return 'Eyewear';
+
+        // MASK -- всё что на лицо (маски, балаклавы, бандана, шемаг, борода, нос, eyepatch).
+        // Проверяем ПЕРЕД Head -- иначе EyeMask_Christmas поймается в Head.
+        // Beard без \b т.к. SantasBeard -- CamelCase без word-boundary.
+        if (/mask|balaclava|bandana|shemag|scarf|respirator|beard|eyepatch|facecover|nose/i.test(cn)) return 'Mask';
+
+        // HEAD -- шлемы, каски, бейсболки, бини, беретки, короны, диадемы, повязки.
+        // /cap(?![a-z])/ отбрасывает "Capacity" etc., но ловит "Cap_X" / "Cap$" /
+        // "CapBlue" (CamelCase: после cap идёт заглавная, а (?![a-z]) с /i видит
+        // [a-zA-Z] и отрицает -- поэтому UpperCamel тоже пройдёт; для CamelCase
+        // типа "HighCapacityVest" буква после "cap" маленькая -- фильтр отбрасывает).
+        if (/helmet|hlmt|cap(?![a-z])|hat|beanie|beret|hood(?!ie)|headtorch|headband|headdress|ushanka|budenovka|norsehelm|coif|crown/i.test(cn)) return 'Head';
+
+        // ARMBAND -- повязка на рукав
+        if (/armband/i.test(cn)) return 'Armband';
+
+        // VEST -- жилеты, разгрузки, кобуры
+        if (/vest|platecarrier|pressvest|ukassvest|ttskovest|chestholster|holster|pouches|radiopouch/i.test(cl)) return 'Vest';
+
+        // LEGS -- штаны, шорты
+        if (/pants|jeans|trousers|shorts|kilt/i.test(cl)) return 'Legs';
+
+        // FEET -- обувь
+        if (/boots|shoes|sneakers|sandals|slippers/i.test(cl)) return 'Feet';
+
+        // HANDS -- перчатки, рукавицы
+        if (/gloves|mittens/i.test(cl)) return 'Hands';
+
+        // BELT -- ремень. Поясные сумки (BeltPouch) уже ушли в Vest через /pouches/ выше.
+        // LeatherBelt_X / CanvasBelt_X / Battlebelt_X -- всё сюда.
+        if (/belt/i.test(cl)) return 'Belt';
+
+        // BODY -- рубашки, футболки, куртки, плащи, гилли, кольчуги
+        if (/jacket|shirt|hoodie|sweater|parka|coat|pullover|tshirt|tunic|top$|raincoat|pajama|overalls|gorka|ghillie|chainmail/i.test(cl)) return 'Body';
+
+        // ─── Фолбэк по wiki-тегам (если classname ничего не сказал) ──
+        if (tags.has('face')) return 'Mask';
+        if (tags.has('eyes')) return 'Eyewear';
+        if (tags.has('hats')) return 'Head';
+        if (tags.has('torso')) return 'Body';
+        if (tags.has('pants')) return 'Legs';
+        if (tags.has('shoes')) return 'Feet';
+        if (tags.has('gloves')) return 'Hands';
+        if (tags.has('arm')) return 'Armband';
+        if (tags.has('belt')) return 'Belt';
+
+        return 'Other';
     }
 
     return 'Other';
