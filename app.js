@@ -100,6 +100,7 @@ function formatItem(item, depth) {
         `${pad1}"health": ${formatFloat(item.health ?? -1)}`,
         `${pad1}"quantity": ${formatFloat(item.quantity ?? -1)}`,
         `${pad1}"ammoCount": ${formatInt(item.ammoCount ?? -1)}`,
+        `${pad1}"quickBar": ${formatInt(item.quickBar ?? -1)}`,
         `${pad1}"choices": ${formatArray(item.choices || [], depth + 1)}`,
         `${pad1}"attachments": ${formatArray(item.attachments || [], depth + 1)}`,
         `${pad1}"cargo": ${formatArray(item.cargo || [], depth + 1)}`
@@ -139,6 +140,7 @@ function newItem(classname = '') {
         health: -1,
         quantity: -1,
         ammoCount: inferAmmoCount(classname),
+        quickBar: -1,
         choices: [],
         attachments: [],
         cargo: []
@@ -404,6 +406,9 @@ function renderNode(item, parentArr, idx, isRoot) {
     fields.appendChild(makeField('hp', 'health', item, 'health', 'float'));
     fields.appendChild(makeField('qty', 'quantity', item, 'quantity', 'float'));
     fields.appendChild(makeField('ammo', 'ammoCount', item, 'ammoCount', 'int', 'ammo'));
+    // quickBar: 0..9 = HUD слоты 1..10; -1 = не назначать. Применяется
+    // при спавне лоадаута в DM -- вещь сразу попадает на указанный слот.
+    fields.appendChild(makeField('qb', 'quickBar (0..9 = HUD 1..10, -1 = нет)', item, 'quickBar', 'int'));
     head.appendChild(fields);
 
     // Actions
@@ -628,6 +633,7 @@ function normalizeItem(it) {
         health: it.health ?? -1,
         quantity: it.quantity ?? -1,
         ammoCount: it.ammoCount ?? -1,
+        quickBar: it.quickBar ?? -1,
         choices: (it.choices || []).map(normalizeItem),
         attachments: (it.attachments || []).map(normalizeItem),
         cargo: (it.cargo || []).map(normalizeItem)
