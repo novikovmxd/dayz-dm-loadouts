@@ -924,7 +924,131 @@ function deleteSet() {
 function rerender() {
     renderSetSelect();
     renderCharacter();
+    renderQuickBar();
     renderTree();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// QUICKBAR PANEL
+// ═══════════════════════════════════════════════════════════════════
+//
+// Визуальное представление in-game хотбара (9 слотов), куда можно назначать
+// предметы drag'ом. Слот показывает картинку предмета, которому выставлен
+// quickBar == индекс_слота. Клик по занятому слоту скроллит к предмету в
+// дереве. Правый клик убирает назначение. Слоты -- только drop-targets,
+// они не source'ы для drag'а (таскать сам хотбар не нужно -- меняй через
+// слоты в дереве).
+
+// Итератор по всем предметам сета (включая вложенные choices/attachments/cargo).
+function walkSetItems(set, fn) {
+    function walk(item) {
+        fn(item);
+        for (const key of ['choices', 'attachments', 'cargo']) {
+            for (const child of (item[key] || [])) walk(child);
+        }
+    }
+    for (const root of (set.items || [])) walk(root);
+}
+
+// Найти первый предмет с заданным quickBar-слотом.
+function findItemByQuickBar(set, slot) {
+    let result = null;
+    walkSetItems(set, it => {
+        if (!result && it.quickBar === slot) result = it;
+    });
+    return result;
+}
+
+// Назначить предмету targetItem слот slot (0-based). Снимает назначение
+// этого слота у всех других предметов сета -- один слот = один предмет
+// (в DayZ при коллизии победил бы последний назначенный, но визуально в
+// панели UI должно быть однозначно).
+function assignQuickBarSlot(targetItem, slot) {
+    if (!targetItem) return;
+    const set = activeSet();
+    if (!set) return;
+    walkSetItems(set, it => {
+        if (it !== targetItem && it.quickBar === slot) it.quickBar = -1;
+    });
+    targetItem.quickBar = slot;
+    rerender();
+}
+
+function renderQuickBar() {
+    const panel = document.getElementById('quickbarPanel');
+    if (!panel) return;
+    panel.innerHTML = '';
+    const set = activeSet();
+
+    // 9 слотов: внутри quickBar = 0..8, на HUD -- 1..9 (см. фото из игры).
+    for (let slot = 0; slot < 9; slot++) {
+        const box = document.createElement('div');
+        box.className = 'qbar-slot';
+        const hudNum = slot + 1;
+        const item = set ? findItemByQuickBar(set, slot) : null;
+
+        // Эффективный classname -- учитываем choice-группу (первый не-пустой choice).
+        let cn = null;
+        if (item) {
+            cn = item.type;
+            if (!cn && item.choices && item.choices.length) {
+                const fc = item.choices.find(c => c.type);
+                if (fc) cn = fc.type;
+            }
+        }
+
+        if (item && cn) {
+            box.classList.add('occupied');
+            box.innerHTML =
+                `<span class="qbar-num">${hudNum}</span>` +
+                `<img src="${imageFor(cn)}" alt="" onerror="this.style.opacity=0.2" />`;
+            box.title = `${nameFor(cn)} (${cn}) -- клик для перехода, правый клик -- убрать`;
+            box.addEventListener('click', () => {
+                // Скроллим к корневому предку предмета (тот, что на первом уровне set.items)
+                let rootIdx = -1;
+                for (let i = 0; i < set.items.length; i++) {
+                    if (containsItem(set.items[i], item)) { rootIdx = i; break; }
+                }
+                if (rootIdx >= 0) {
+                    const node = document.querySelector(`[data-rootidx="${rootIdx}"]`);
+                    if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+        } else {
+            box.innerHTML = `<span class="qbar-num empty">${hudNum}</span>`;
+        }
+
+        // Правый клик -- очистить слот (убрать назначение у предмета, сам
+        // предмет в дереве остаётся).
+        box.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            if (item) {
+                item.quickBar = -1;
+                rerender();
+            }
+        });
+
+        // Drop target:
+        //   catalog (classname) -- создать новый root-предмет с quickBar=slot;
+        //   tree-drag           -- переназначить slot у перемещаемого предмета
+        //                          (в дереве он остаётся на своём месте).
+        attachDropTarget(box,
+            classname => {
+                if (!set) return;
+                walkSetItems(set, it => {
+                    if (it.quickBar === slot) it.quickBar = -1;
+                });
+                const itm = newItem(classname);
+                itm.quickBar = slot;
+                set.items.push(itm);
+                rerender();
+            },
+            src => {
+                assignQuickBarSlot(src.item, slot);
+            });
+
+        panel.appendChild(box);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════

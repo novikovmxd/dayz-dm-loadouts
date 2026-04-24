@@ -247,6 +247,60 @@ input:focus, select:focus { border-color: var(--accent); }
     line-height: 14px;
 }
 
+/* QuickBar-панель над деревом: 9 слотов, визуально повторяющие in-game
+   хотбар (серые квадраты с номером, оранжевая рамка у занятых). */
+.quickbar-panel {
+    display: flex;
+    gap: 3px;
+    padding: 8px 10px;
+    background: #1a1d20;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.qbar-slot {
+    width: 52px;
+    height: 52px;
+    background: #2a2d30;
+    border: 1px solid #3a3d40;
+    border-radius: 3px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.08s, background 0.08s;
+}
+.qbar-slot:hover { border-color: #5a5d60; }
+.qbar-slot.occupied {
+    border-color: #e08040;
+    background: #1a1d20;
+}
+.qbar-slot.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+}
+.qbar-slot .qbar-num {
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    color: #fff;
+    font-size: 11px;
+    font-weight: bold;
+    background: rgba(0,0,0,0.6);
+    padding: 0 4px;
+    border-radius: 2px;
+    z-index: 1;
+    line-height: 14px;
+}
+.qbar-slot .qbar-num.empty { opacity: 0.45; }
+.qbar-slot img {
+    max-width: 46px;
+    max-height: 46px;
+    object-fit: contain;
+    pointer-events: none;  /* иначе img перехватывает click вместо box'а */
+}
+
 .node-head {
     display: flex;
     align-items: center;
