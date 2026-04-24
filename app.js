@@ -959,19 +959,47 @@ function findItemByQuickBar(set, slot) {
     return result;
 }
 
-// Назначить предмету targetItem слот slot (0-based). Снимает назначение
-// этого слота у всех других предметов сета -- один слот = один предмет
-// (в DayZ при коллизии победил бы последний назначенный, но визуально в
-// панели UI должно быть однозначно).
+// Назначить предмету targetItem слот slot (0-based). Если в слоте уже
+// сидел другой предмет -- происходит ОБМЕН: тот предмет получает старый
+// слот targetItem'а (или -1 если targetItem ниоткуда не приходил). Это
+// matches типичный hotbar-UX: drag из слота 1 в слот 3, занятый предмет
+// уезжает в слот 1 вместо того чтобы потерять назначение.
 function assignQuickBarSlot(targetItem, slot) {
     if (!targetItem) return;
     const set = activeSet();
     if (!set) return;
-    walkSetItems(set, it => {
-        if (it !== targetItem && it.quickBar === slot) it.quickBar = -1;
-    });
+
+    const oldSlot = targetItem.quickBar;
+    const occupant = findItemByQuickBar(set, slot);
+
+    if (occupant && occupant !== targetItem) {
+        // Swap: old occupant получает старый slot нашего targetItem.
+        // Если у targetItem не было слота (oldSlot < 0), occupant просто
+        // теряет назначение.
+        occupant.quickBar = (typeof oldSlot === 'number' && oldSlot >= 0) ? oldSlot : -1;
+    }
+
     targetItem.quickBar = slot;
     rerender();
+}
+
+// Найти массив-родителя данного предмета в сете (чтобы set state.dragSource
+// при drag'е из QuickBar-панели). Возвращает null если предмет не найден.
+function findItemParentArr(set, item) {
+    if (!set || !item) return null;
+    if (set.items.indexOf(item) !== -1) return set.items;
+    let result = null;
+    walkSetItems(set, parent => {
+        if (result) return;
+        for (const key of ['choices', 'attachments', 'cargo']) {
+            const arr = parent[key];
+            if (Array.isArray(arr) && arr.indexOf(item) !== -1) {
+                result = arr;
+                return;
+            }
+        }
+    });
+    return result;
 }
 
 function renderQuickBar() {
@@ -1002,9 +1030,29 @@ function renderQuickBar() {
             box.innerHTML =
                 `<span class="qbar-num">${hudNum}</span>` +
                 `<img src="${imageFor(cn)}" alt="" onerror="this.style.opacity=0.2" />`;
-            box.title = `${nameFor(cn)} (${cn}) -- клик для перехода, правый клик -- убрать`;
+            box.title = `${nameFor(cn)} (${cn}) -- перетащи для смены слота, клик для перехода, правый клик -- убрать`;
+
+            // Draggable: тащим предмет ИЗ хотбара. dragSource содержит ссылку
+            // на сам предмет в дереве + его parentArr -- так drop в другой
+            // qbar-slot вызовет assignQuickBarSlot (swap), а drop в tree-группу
+            // или character-slot переместит предмет в дереве.
+            box.draggable = true;
+            box.addEventListener('dragstart', e => {
+                e.stopPropagation();
+                const parentArr = findItemParentArr(set, item);
+                if (!parentArr) return;
+                state.dragSource = { item, parentArr };
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', '');
+                box.classList.add('dragging');
+            });
+            box.addEventListener('dragend', () => {
+                box.classList.remove('dragging');
+                state.dragSource = null;
+            });
+
             box.addEventListener('click', () => {
-                // Скроллим к корневому предку предмета (тот, что на первом уровне set.items)
+                // Скроллим к корневому предку предмета.
                 let rootIdx = -1;
                 for (let i = 0; i < set.items.length; i++) {
                     if (containsItem(set.items[i], item)) { rootIdx = i; break; }

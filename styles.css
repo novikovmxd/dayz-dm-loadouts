@@ -248,20 +248,21 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 
 /* QuickBar-панель над деревом: 9 слотов, визуально повторяющие in-game
-   хотбар (серые квадраты с номером, оранжевая рамка у занятых). */
+   хотбар (серые квадраты с номером, оранжевая рамка у занятых). Фон --
+   var(--panel), тот же что у остальных панелей. */
 .quickbar-panel {
     display: flex;
     gap: 3px;
     padding: 8px 10px;
-    background: #1a1d20;
+    background: var(--panel);
     border-bottom: 1px solid var(--border);
     flex-wrap: wrap;
 }
 .qbar-slot {
     width: 52px;
     height: 52px;
-    background: #2a2d30;
-    border: 1px solid #3a3d40;
+    background: var(--panel2);
+    border: 1px solid var(--border);
     border-radius: 3px;
     position: relative;
     display: flex;
@@ -269,13 +270,15 @@ input:focus, select:focus { border-color: var(--accent); }
     justify-content: center;
     cursor: pointer;
     user-select: none;
-    transition: border-color 0.08s, background 0.08s;
+    transition: border-color 0.08s, background 0.08s, opacity 0.08s;
 }
-.qbar-slot:hover { border-color: #5a5d60; }
+.qbar-slot:hover { border-color: var(--muted); }
 .qbar-slot.occupied {
-    border-color: #e08040;
-    background: #1a1d20;
+    border-color: var(--accent);
 }
+.qbar-slot.occupied[draggable="true"] { cursor: grab; }
+.qbar-slot.occupied[draggable="true"]:active { cursor: grabbing; }
+.qbar-slot.dragging { opacity: 0.45; outline: 2px dashed var(--accent); }
 .qbar-slot.drag-over {
     border-color: var(--accent);
     background: var(--accent-dim);
