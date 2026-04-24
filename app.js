@@ -37,7 +37,11 @@ const state = {
     // дереве). Сетается в dragstart узла, читается в drop-handler'е и
     // сбрасывается в dragend. Содержит { item, parentArr } -- прямую ссылку
     // на перемещаемый предмет и массив, в котором он сейчас лежит.
-    dragSource: null
+    dragSource: null,
+    // Свёрнутые узлы. WeakSet из ссылок на item-объекты -- ref-стабильность
+    // переживает rerender (мы предметы не пересоздаём, только DOM). После
+    // удаления предмета WeakSet автоматом подчищается.
+    collapsed: new WeakSet()
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -519,6 +523,31 @@ function renderNode(item, parentArr, idx, isRoot, ownerItem) {
     const head = document.createElement('div');
     head.className = 'node-head';
 
+    // Тоггл свёртывания: показываем стрелку только если у предмета есть дети
+    // (choices/attachments/cargo). Иначе вместо стрелки -- невидимый
+    // placeholder той же ширины для выравнивания всех node-head'ов.
+    const childrenCount =
+        (item.choices?.length || 0) +
+        (item.attachments?.length || 0) +
+        (item.cargo?.length || 0);
+    const isCollapsed = state.collapsed.has(item);
+    const toggle = document.createElement('span');
+    toggle.className = 'node-toggle' + (childrenCount === 0 ? ' empty' : '');
+    toggle.textContent = isCollapsed ? '▶' : '▼';
+    toggle.title = isCollapsed ? `Развернуть (${childrenCount})` : 'Свернуть';
+    if (childrenCount > 0) {
+        toggle.addEventListener('click', e => {
+            e.stopPropagation();
+            if (state.collapsed.has(item)) state.collapsed.delete(item);
+            else state.collapsed.add(item);
+            rerender();
+        });
+        // Тоггл -- НЕ drag-handle, чтобы клик не запускал drag предка.
+        toggle.draggable = false;
+        toggle.addEventListener('mousedown', e => e.stopPropagation());
+    }
+    head.appendChild(toggle);
+
     // Для choice-группы (item.type == '') берём визуал из первого choice:
     // картинка, название, даже slot-классификация. Иначе показывался
     // пустой placeholder и пользователь не видел что именно выбирается.
@@ -619,6 +648,8 @@ function renderNode(item, parentArr, idx, isRoot, ownerItem) {
     children.appendChild(renderGroup('attachments', item));
     children.appendChild(renderGroup('cargo', item));
     node.appendChild(children);
+
+    if (isCollapsed) node.classList.add('collapsed');
 
     return node;
 }
@@ -1135,6 +1166,20 @@ async function init() {
     document.getElementById('btnSave').addEventListener('click', saveFile);
     document.getElementById('btnDownload').addEventListener('click', downloadFile);
     document.getElementById('btnAddRaw').addEventListener('click', () => pickClassname(cn => addRootItem(cn)));
+
+    // Свернуть всё / развернуть всё (по дереву активного сета).
+    document.getElementById('btnCollapseAll').addEventListener('click', () => {
+        const set = activeSet();
+        if (!set) return;
+        walkSetItems(set, it => state.collapsed.add(it));
+        rerender();
+    });
+    document.getElementById('btnExpandAll').addEventListener('click', () => {
+        const set = activeSet();
+        if (!set) return;
+        walkSetItems(set, it => state.collapsed.delete(it));
+        rerender();
+    });
 
     // Try to restore previous file handle
     if (HAS_FSA) {

@@ -220,6 +220,23 @@ input:focus, select:focus { border-color: var(--accent); }
 .tree-node.dragging > .node-head { opacity: 0.45; outline: 2px dashed var(--accent); }
 .tree-node[draggable="true"] > .node-head { cursor: grab; }
 .tree-node[draggable="true"] > .node-head:active { cursor: grabbing; }
+/* Свёрнутый узел: скрываем поддерево, head остаётся видимым со стрелкой ▶. */
+.tree-node.collapsed > .node-children { display: none; }
+/* Тоггл свёртывания: маленькая стрелка слева. .empty -- невидимый
+   placeholder той же ширины, чтобы node-head'ы предметов без детей
+   выравнивались по горизонтали с теми, у которых дети есть. */
+.node-toggle {
+    width: 14px;
+    flex-shrink: 0;
+    text-align: center;
+    cursor: pointer;
+    color: var(--muted);
+    user-select: none;
+    font-size: 10px;
+    line-height: 1;
+}
+.node-toggle:hover { color: var(--text); }
+.node-toggle.empty { visibility: hidden; cursor: default; }
 /* "Вставка перед": толстая линия сверху узла -- сразу видно куда упадёт. */
 .tree-node.drop-before > .node-head {
     border-top: 3px solid var(--accent);
