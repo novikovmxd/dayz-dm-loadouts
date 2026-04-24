@@ -32,7 +32,12 @@ const state = {
     data: { Sets: [] },
     activeSetIdx: -1,
     fileHandle: null,
-    filter: { search: '', slot: '' }
+    filter: { search: '', slot: '' },
+    // Текущий источник внутреннего drag'а (пока пользователь тащит предмет в
+    // дереве). Сетается в dragstart узла, читается в drop-handler'е и
+    // сбрасывается в dragend. Содержит { item, parentArr } -- прямую ссылку
+    // на перемещаемый предмет и массив, в котором он сейчас лежит.
+    dragSource: null
 };
 
 // ═══════════════════════════════════════════════════════════════════
@@ -297,7 +302,10 @@ function renderCharacter() {
         } else {
             box.innerHTML = `<span class="slot-label">${SLOT_LABELS[s] || s}</span><span style="opacity:0.4">пусто</span>`;
         }
-        attachDropTarget(box, classname => addRootItem(classname));
+        // Drop: catalog (classname) → add root; tree-drag → promote item to root.
+        attachDropTarget(box,
+            classname => addRootItem(classname),
+            src => moveItemToRoot(src));
         slots.appendChild(box);
     }
 
@@ -318,8 +326,10 @@ function renderCharacter() {
         });
         extra.appendChild(box);
     }
-    // Drop target on extra area for non-slot items
-    attachDropTarget(extra, classname => addRootItem(classname));
+    // Drop target on extra area: catalog → add root; tree-drag → promote.
+    attachDropTarget(extra,
+        classname => addRootItem(classname),
+        src => moveItemToRoot(src));
 }
 
 function addRootItem(classname) {
@@ -333,19 +343,79 @@ function addRootItem(classname) {
 // DROP TARGETS
 // ═══════════════════════════════════════════════════════════════════
 
-function attachDropTarget(el, onDrop) {
+// attachDropTarget теперь принимает ДВА колбэка:
+//   onCatalog(classname) -- drag из каталога, классический сценарий "добавить".
+//   onMove(src)          -- drag внутри дерева, src = { item, parentArr }.
+//                           Если null -- внутренний drop просто игнорируется
+//                           (но dragSource сбрасывается, т.к. browser уже
+//                           считает drop произошедшим).
+// state.dragSource выставляется в dragstart узла дерева и сбрасывается на
+// drop/dragend, так что на этот момент мы знаем: это внутренний drag или
+// drag из каталога.
+function attachDropTarget(el, onCatalog, onMove = null) {
     el.addEventListener('dragover', e => {
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'copy';
+        e.dataTransfer.dropEffect = state.dragSource ? 'move' : 'copy';
         el.classList.add('drag-over');
     });
     el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
     el.addEventListener('drop', e => {
         e.preventDefault();
+        e.stopPropagation();  // иначе parent-target тоже обработает drop
         el.classList.remove('drag-over');
+        if (state.dragSource) {
+            if (onMove) onMove(state.dragSource);
+            state.dragSource = null;
+            return;
+        }
         const cn = e.dataTransfer.getData('text/plain');
-        if (cn) onDrop(cn);
+        if (cn) onCatalog(cn);
     });
+}
+
+// Проверка цикла: можно ли предмет `candidate` считать потомком (в т.ч.
+// равным) предмета `ancestor`. Используется перед move чтобы не переместить
+// предмет внутрь самого себя или своего потомка.
+function containsItem(ancestor, candidate) {
+    if (!ancestor || !candidate) return false;
+    if (ancestor === candidate) return true;
+    for (const key of ['choices', 'attachments', 'cargo']) {
+        const arr = ancestor[key];
+        if (!Array.isArray(arr)) continue;
+        for (const child of arr) {
+            if (containsItem(child, candidate)) return true;
+        }
+    }
+    return false;
+}
+
+// Переместить предмет в целевой массив targetArr. targetParentItem -- владелец
+// этого массива (нужен только для проверки цикла; для root-уровня null).
+function moveItemTo(src, targetArr, targetParentItem) {
+    if (!src || !Array.isArray(targetArr)) return;
+
+    // Цикл: если целевой parent -- сам перемещаемый предмет или его потомок,
+    // запретить. Иначе получим бесконечное дерево при следующей итерации.
+    if (targetParentItem && containsItem(src.item, targetParentItem)) {
+        toast('Нельзя переместить в собственный потомок', 'error');
+        return;
+    }
+
+    // Удаляем из старого массива по ссылке (индекс может быть неактуален, если
+    // на DOM между dragstart и drop что-то пере-рендерилось).
+    const oldIdx = src.parentArr.indexOf(src.item);
+    if (oldIdx === -1) return;
+    src.parentArr.splice(oldIdx, 1);
+
+    targetArr.push(src.item);
+    rerender();
+}
+
+// Shortcut: продвинуть предмет на root-уровень активного сета.
+function moveItemToRoot(src) {
+    const set = activeSet();
+    if (!set || !src) return;
+    moveItemTo(src, set.items, null);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -378,17 +448,56 @@ function renderNode(item, parentArr, idx, isRoot) {
     node.className = 'tree-node' + (isRoot ? ' root-node' : '');
     if (isRoot) node.dataset.rootidx = String(idx);
 
+    // Внутренний drag: весь узел -- draggable. dragstart на вложенном узле
+    // stopPropagation'ится, чтобы у родителя не перезаписался dragSource.
+    node.draggable = true;
+    node.addEventListener('dragstart', e => {
+        e.stopPropagation();
+        state.dragSource = { item, parentArr };
+        e.dataTransfer.effectAllowed = 'move';
+        // Браузер требует хоть какие-то данные в dataTransfer, иначе drop
+        // не сработает в некоторых движках. Пустая строка отличает от
+        // catalog-drag'а, где туда идёт classname.
+        e.dataTransfer.setData('text/plain', '');
+        node.classList.add('dragging');
+    });
+    node.addEventListener('dragend', () => {
+        node.classList.remove('dragging');
+        state.dragSource = null;
+    });
+
     const head = document.createElement('div');
     head.className = 'node-head';
 
+    // Для choice-группы (item.type == '') берём визуал из первого choice:
+    // картинка, название, даже slot-классификация. Иначе показывался
+    // пустой placeholder и пользователь не видел что именно выбирается.
+    let displayCn = item.type;
+    if (!displayCn && item.choices && item.choices.length) {
+        const firstChoice = item.choices.find(c => c.type);
+        if (firstChoice) displayCn = firstChoice.type;
+    }
+
     const img = document.createElement('img');
-    img.src = imageFor(item.type);
+    img.src = imageFor(displayCn);
     img.onerror = () => { img.style.opacity = 0.15; };
+    // Картинки по-умолчанию draggable у браузера. Выключаем -- иначе drag
+    // начинается на img и забивает наш node-drag (dataTransfer уходит
+    // с URL картинки вместо нашего маркера).
+    img.draggable = false;
     head.appendChild(img);
 
     const typeEl = document.createElement('span');
     typeEl.className = 'node-type' + (item.type ? '' : ' empty');
-    typeEl.textContent = item.type || '(choice-группа)';
+    // Для choice-группы показываем `choice: N вариантов` вместо пустого
+    // plaque -- понятнее что именно за узел.
+    if (item.type) {
+        typeEl.textContent = item.type;
+    } else if (item.choices && item.choices.length) {
+        typeEl.textContent = `(choice: ${item.choices.length})`;
+    } else {
+        typeEl.textContent = '(choice-группа)';
+    }
     typeEl.title = 'Кликни для смены classname';
     typeEl.style.cursor = 'pointer';
     typeEl.addEventListener('click', () => pickClassname(cn => { item.type = cn; if (cn && item.ammoCount === -1) item.ammoCount = inferAmmoCount(cn); rerender(); }));
@@ -396,8 +505,34 @@ function renderNode(item, parentArr, idx, isRoot) {
 
     const name = document.createElement('span');
     name.className = 'node-name';
-    name.textContent = item.type ? nameFor(item.type) : '';
+    name.textContent = displayCn ? nameFor(displayCn) : '';
     head.appendChild(name);
+
+    // Бэйдж слота персонажа (Голова/Торс/Оружие/...) -- сразу видно чем
+    // предмет классифицируется. Если предмет лежит в странном месте
+    // (напр. шлем в cargo штанов), это подсветит ошибку.
+    // Для choice-группы используем displayCn (первый choice).
+    if (displayCn) {
+        const slot = classifyItem(displayCn);
+        if (slot && slot !== 'Other') {
+            const slotBadge = document.createElement('span');
+            slotBadge.className = 'slot-badge';
+            slotBadge.textContent = SLOT_LABELS[slot] || slot;
+            slotBadge.title = `Классифицирован как: ${slot}`;
+            head.appendChild(slotBadge);
+        }
+    }
+
+    // Бэйдж QuickBar -- когда предмет привязан к слоту хотбара.
+    // Показываем HUD-номер (quickBar + 1), т.к. пользователь смотрит на
+    // 1..10 на экране, а не на 0..9 в коде.
+    if (typeof item.quickBar === 'number' && item.quickBar >= 0 && item.quickBar <= 9) {
+        const qbBadge = document.createElement('span');
+        qbBadge.className = 'qb-badge';
+        qbBadge.textContent = `QB ${item.quickBar + 1}`;
+        qbBadge.title = `QuickBar слот ${item.quickBar + 1} (HUD)`;
+        head.appendChild(qbBadge);
+    }
 
     // Fields
     const fields = document.createElement('div');
@@ -461,12 +596,17 @@ function renderGroup(key, parentItem) {
     });
     g.appendChild(list);
 
-    // drop zone for the group (label area + list)
-    attachDropTarget(g, classname => {
-        if (!parentItem[key]) parentItem[key] = [];
-        parentItem[key].push(newItem(classname));
-        rerender();
-    });
+    // Drop-зона группы: catalog → создать предмет; tree-drag → переместить.
+    attachDropTarget(g,
+        classname => {
+            if (!parentItem[key]) parentItem[key] = [];
+            parentItem[key].push(newItem(classname));
+            rerender();
+        },
+        src => {
+            if (!parentItem[key]) parentItem[key] = [];
+            moveItemTo(src, parentItem[key], parentItem);
+        });
 
     return g;
 }

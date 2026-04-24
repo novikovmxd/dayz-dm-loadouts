@@ -217,6 +217,30 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 .tree-node.drag-over > .node-head { background: var(--accent-dim); border-color: var(--accent); }
 .tree-node.root-node { border-left-color: var(--accent); }
+.tree-node.dragging > .node-head { opacity: 0.45; outline: 2px dashed var(--accent); }
+.tree-node[draggable="true"] > .node-head { cursor: grab; }
+.tree-node[draggable="true"] > .node-head:active { cursor: grabbing; }
+
+/* Бэйдж слота: синий -- "к какой части тела относится предмет". */
+.slot-badge {
+    background: #2d4e6b;
+    color: #b0d8ff;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 14px;
+}
+/* Бэйдж QuickBar: оранжевый -- "на каком слоте хотбара будет после спавна". */
+.qb-badge {
+    background: #e08040;
+    color: #000;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+}
 
 .node-head {
     display: flex;
