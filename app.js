@@ -389,9 +389,14 @@ function containsItem(ancestor, candidate) {
     return false;
 }
 
-// Переместить предмет в целевой массив targetArr. targetParentItem -- владелец
-// этого массива (нужен только для проверки цикла; для root-уровня null).
-function moveItemTo(src, targetArr, targetParentItem) {
+// Переместить предмет в целевой массив targetArr на конкретную позицию.
+// targetParentItem -- владелец массива (нужен только для проверки цикла;
+// для root-уровня null). beforeIdx:
+//   null / undefined / >= length  -- добавить в конец (push)
+//   >= 0                          -- вставить перед этим индексом
+// Если src уже был в targetArr и beforeIdx > oldIdx, индекс компенсируется
+// после splice (иначе вставишь на одну позицию правее чем ожидал).
+function moveItemTo(src, targetArr, targetParentItem, beforeIdx = null) {
     if (!src || !Array.isArray(targetArr)) return;
 
     // Цикл: если целевой parent -- сам перемещаемый предмет или его потомок,
@@ -401,13 +406,23 @@ function moveItemTo(src, targetArr, targetParentItem) {
         return;
     }
 
-    // Удаляем из старого массива по ссылке (индекс может быть неактуален, если
-    // на DOM между dragstart и drop что-то пере-рендерилось).
     const oldIdx = src.parentArr.indexOf(src.item);
     if (oldIdx === -1) return;
+
+    // Если target и source -- один массив, и вставляем ПОСЛЕ текущей позиции,
+    // после splice все последующие индексы сдвинутся на 1 влево. Компенсируем.
+    let insertIdx = beforeIdx;
+    if (src.parentArr === targetArr && insertIdx !== null && insertIdx > oldIdx) {
+        insertIdx = insertIdx - 1;
+    }
+
     src.parentArr.splice(oldIdx, 1);
 
-    targetArr.push(src.item);
+    if (insertIdx === null || insertIdx < 0 || insertIdx > targetArr.length) {
+        targetArr.push(src.item);
+    } else {
+        targetArr.splice(insertIdx, 0, src.item);
+    }
     rerender();
 }
 
@@ -439,11 +454,17 @@ function renderTree() {
     root.appendChild(header);
 
     set.items.forEach((item, idx) => {
-        root.appendChild(renderNode(item, set.items, idx, true));
+        // ownerItem=null -- root-уровень, массив принадлежит самому set'у,
+        // а не какому-то предмету. Для cycle-check это значит "без родителя".
+        root.appendChild(renderNode(item, set.items, idx, true, null));
     });
 }
 
-function renderNode(item, parentArr, idx, isRoot) {
+// parentArr      -- массив, в котором сейчас живёт item
+// idx            -- индекс item в parentArr (для позиционной вставки при drop)
+// isRoot         -- корневой предмет набора (особый стиль border-left)
+// ownerItem      -- предмет-владелец parentArr; null если parentArr -- это set.items
+function renderNode(item, parentArr, idx, isRoot, ownerItem) {
     const node = document.createElement('div');
     node.className = 'tree-node' + (isRoot ? ' root-node' : '');
     if (isRoot) node.dataset.rootidx = String(idx);
@@ -464,6 +485,35 @@ function renderNode(item, parentArr, idx, isRoot) {
     node.addEventListener('dragend', () => {
         node.classList.remove('dragging');
         state.dragSource = null;
+    });
+
+    // Сам узел тоже drop-target: предмет будет вставлен ПЕРЕД этим узлом.
+    // Это даёт позиционное управление -- пользователь кидает туда, куда
+    // хочет, не на "где-нибудь в группе". stopPropagation -- чтобы родительская
+    // группа не перехватывала drop (иначе срабатывал бы push-в-конец).
+    node.addEventListener('dragover', e => {
+        if (!state.dragSource) return;
+        if (state.dragSource.item === item) return;  // сам на себя -- игнор
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        node.classList.add('drop-before');
+    });
+    node.addEventListener('dragleave', e => {
+        // dragleave срабатывает при переходе на ребёнка -- проверим, что
+        // курсор действительно вышел за пределы node. Иначе мерцает.
+        if (!node.contains(e.relatedTarget)) {
+            node.classList.remove('drop-before');
+        }
+    });
+    node.addEventListener('drop', e => {
+        if (!state.dragSource) return;
+        e.preventDefault();
+        e.stopPropagation();
+        node.classList.remove('drop-before');
+        const src = state.dragSource;
+        state.dragSource = null;
+        moveItemTo(src, parentArr, ownerItem, idx);
     });
 
     const head = document.createElement('div');
@@ -574,6 +624,8 @@ function renderNode(item, parentArr, idx, isRoot) {
 }
 
 function renderGroup(key, parentItem) {
+    // parentItem -- предмет-владелец группы, становится ownerItem для
+    // детей (чтобы cycle-check понимал иерархию).
     const g = document.createElement('div');
     g.className = 'children-group';
     const label = document.createElement('div');
@@ -592,7 +644,7 @@ function renderGroup(key, parentItem) {
 
     const list = document.createElement('div');
     (parentItem[key] || []).forEach((child, i) => {
-        list.appendChild(renderNode(child, parentItem[key], i, false));
+        list.appendChild(renderNode(child, parentItem[key], i, false, parentItem));
     });
     g.appendChild(list);
 

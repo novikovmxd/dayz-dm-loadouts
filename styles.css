@@ -220,6 +220,11 @@ input:focus, select:focus { border-color: var(--accent); }
 .tree-node.dragging > .node-head { opacity: 0.45; outline: 2px dashed var(--accent); }
 .tree-node[draggable="true"] > .node-head { cursor: grab; }
 .tree-node[draggable="true"] > .node-head:active { cursor: grabbing; }
+/* "Вставка перед": толстая линия сверху узла -- сразу видно куда упадёт. */
+.tree-node.drop-before > .node-head {
+    border-top: 3px solid var(--accent);
+    padding-top: 2px;
+}
 
 /* Бэйдж слота: синий -- "к какой части тела относится предмет". */
 .slot-badge {
