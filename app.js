@@ -680,6 +680,13 @@ function makeField(label, title, obj, key, kind, cls = '') {
         const v = kind === 'float' ? parseFloat(inp.value) : parseInt(inp.value, 10);
         obj[key] = Number.isFinite(v) ? v : -1;
     });
+    // Input внутри draggable tree-node: по HTML5 ребёнок наследует draggable,
+    // и попытка выделить текст мышью запускает drag предка. Выставляем
+    // draggable=false (overrides parent) + mousedown.stopPropagation --
+    // иначе браузер всё равно может подхватить mousedown как "начало drag'а"
+    // прежде чем у input'а появится фокус.
+    inp.draggable = false;
+    inp.addEventListener('mousedown', e => e.stopPropagation());
     wrap.appendChild(lbl);
     wrap.appendChild(inp);
     return wrap;
