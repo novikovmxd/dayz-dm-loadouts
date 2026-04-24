@@ -248,14 +248,13 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 
 /* QuickBar-панель над деревом: 9 слотов, визуально повторяющие in-game
-   хотбар (серые квадраты с номером, оранжевая рамка у занятых). Фон --
-   var(--panel), тот же что у остальных панелей. */
+   хотбар. Фон прозрачный, разделителя нет -- наследуется от panel--tree
+   (var(--panel)), полоса сливается с содержимым дерева. */
 .quickbar-panel {
     display: flex;
     gap: 3px;
     padding: 8px 10px;
-    background: var(--panel);
-    border-bottom: 1px solid var(--border);
+    background: transparent;
     flex-wrap: wrap;
 }
 .qbar-slot {
