@@ -466,8 +466,8 @@ function renderTree() {
     const header = document.createElement('div');
     header.className = 'children-label';
     header.innerHTML = `<strong style="color:var(--text)">items</strong>
-        <button class="add-btn" data-act="add-root">＋ предмет</button>
-        <button class="add-btn" data-act="toggle-all" title="${anyExpanded ? 'Свернуть всё' : 'Развернуть всё'}">${anyExpanded ? '⊟' : '⊞'}</button>`;
+        <button class="add-btn" data-act="toggle-all" title="${anyExpanded ? 'Свернуть всё' : 'Развернуть всё'}">${anyExpanded ? '⊟' : '⊞'}</button>
+        <button class="add-btn" data-act="add-root">＋ предмет</button>`;
     header.querySelector('[data-act="add-root"]').addEventListener('click', () => pickClassname(cn => addRootItem(cn)));
     header.querySelector('[data-act="toggle-all"]').addEventListener('click', () => {
         if (anyExpanded) walkSetItems(set, it => state.collapsed.add(it));
