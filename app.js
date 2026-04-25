@@ -450,11 +450,30 @@ function renderTree() {
         return;
     }
 
+    // Тоггл "свернуть/развернуть всё". Логика: если в сете есть хоть один
+    // развёрнутый узел с детьми -- сворачиваем всё. Если все свёрнуты --
+    // разворачиваем всё. Иконка обновляется соответственно (⊟ когда есть
+    // что свернуть, ⊞ когда всё свёрнуто и кнопка развернёт).
+    let anyExpanded = false;
+    walkSetItems(set, it => {
+        const hasChildren =
+            (it.choices?.length || 0) +
+            (it.attachments?.length || 0) +
+            (it.cargo?.length || 0) > 0;
+        if (hasChildren && !state.collapsed.has(it)) anyExpanded = true;
+    });
+
     const header = document.createElement('div');
     header.className = 'children-label';
     header.innerHTML = `<strong style="color:var(--text)">items</strong>
-        <button class="add-btn" data-act="add-root">＋ предмет</button>`;
+        <button class="add-btn" data-act="add-root">＋ предмет</button>
+        <button class="add-btn" data-act="toggle-all" title="${anyExpanded ? 'Свернуть всё' : 'Развернуть всё'}">${anyExpanded ? '⊟' : '⊞'}</button>`;
     header.querySelector('[data-act="add-root"]').addEventListener('click', () => pickClassname(cn => addRootItem(cn)));
+    header.querySelector('[data-act="toggle-all"]').addEventListener('click', () => {
+        if (anyExpanded) walkSetItems(set, it => state.collapsed.add(it));
+        else walkSetItems(set, it => state.collapsed.delete(it));
+        rerender();
+    });
     root.appendChild(header);
 
     set.items.forEach((item, idx) => {
@@ -1166,20 +1185,8 @@ async function init() {
     document.getElementById('btnSave').addEventListener('click', saveFile);
     document.getElementById('btnDownload').addEventListener('click', downloadFile);
     document.getElementById('btnAddRaw').addEventListener('click', () => pickClassname(cn => addRootItem(cn)));
-
-    // Свернуть всё / развернуть всё (по дереву активного сета).
-    document.getElementById('btnCollapseAll').addEventListener('click', () => {
-        const set = activeSet();
-        if (!set) return;
-        walkSetItems(set, it => state.collapsed.add(it));
-        rerender();
-    });
-    document.getElementById('btnExpandAll').addEventListener('click', () => {
-        const set = activeSet();
-        if (!set) return;
-        walkSetItems(set, it => state.collapsed.delete(it));
-        rerender();
-    });
+    // Тоггл свёртывания всего дерева теперь рендерится в renderTree рядом
+    // с надписью "items" (см. там).
 
     // Try to restore previous file handle
     if (HAS_FSA) {
