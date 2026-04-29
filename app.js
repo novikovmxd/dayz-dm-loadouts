@@ -110,6 +110,7 @@ function formatItem(item, depth) {
         `${pad1}"quantity": ${formatFloat(item.quantity ?? -1)}`,
         `${pad1}"ammoCount": ${formatInt(item.ammoCount ?? -1)}`,
         `${pad1}"quickBar": ${formatInt(item.quickBar ?? -1)}`,
+        `${pad1}"in_hands": ${item.in_hands ? 'true' : 'false'}`,
         `${pad1}"choices": ${formatArray(item.choices || [], depth + 1)}`,
         `${pad1}"attachments": ${formatArray(item.attachments || [], depth + 1)}`,
         `${pad1}"cargo": ${formatArray(item.cargo || [], depth + 1)}`
@@ -150,6 +151,7 @@ function newItem(classname = '') {
         quantity: -1,
         ammoCount: inferAmmoCount(classname),
         quickBar: -1,
+        in_hands: false,
         choices: [],
         attachments: [],
         cargo: []
@@ -632,6 +634,19 @@ function renderNode(item, parentArr, idx, isRoot, ownerItem) {
         head.appendChild(qbBadge);
     }
 
+    // Бэйдж "В РУКАХ" -- in_hands=true. Зеленоватый фон чтобы отличать
+    // от QB-бэйджа. В сете обычно отмечен только один предмет (мод
+    // выбирает последний если несколько).
+    if (item.in_hands) {
+        const handsBadge = document.createElement('span');
+        handsBadge.className = 'qb-badge';
+        handsBadge.style.background = '#3a6b34';
+        handsBadge.style.borderColor = '#5b8a3c';
+        handsBadge.textContent = '🤲 В РУКАХ';
+        handsBadge.title = 'in_hands: предмет окажется в руках игрока при спавне';
+        head.appendChild(handsBadge);
+    }
+
     // Fields
     const fields = document.createElement('div');
     fields.className = 'node-fields';
@@ -642,6 +657,10 @@ function renderNode(item, parentArr, idx, isRoot, ownerItem) {
     // quickBar: 0..9 = HUD слоты 1..10; -1 = не назначать. Применяется
     // при спавне лоадаута в DM -- вещь сразу попадает на указанный слот.
     fields.appendChild(makeField('qb', 'quickBar (0..9 = HUD 1..10, -1 = нет)', item, 'quickBar', 'int'));
+    // in_hands: положить оружие в руки при спавне. В сете может быть
+    // отмечен только ОДИН предмет — при включении других автоматически
+    // снимается этот флаг. Применяется только к weapon (см. мод).
+    fields.appendChild(makeBoolField('hands', 'in_hands: положить оружие в руки игрока. Только ОДИН предмет в сете может быть отмечен.', item, 'in_hands'));
     head.appendChild(fields);
 
     // Actions
@@ -711,6 +730,55 @@ function renderGroup(key, parentItem) {
         });
 
     return g;
+}
+
+// Boolean-checkbox вариант makeField. Используется для in_hands.
+// Для in_hands: автоматически снимает флаг с других предметов в активном
+// сете (имитирует радио-поведение — только один предмет может быть в руках).
+function makeBoolField(label, title, obj, key) {
+    const wrap = document.createElement('span');
+    wrap.style.display = 'inline-flex';
+    wrap.style.gap = '3px';
+    wrap.style.alignItems = 'center';
+    const inp = document.createElement('input');
+    inp.type = 'checkbox';
+    inp.checked = !!obj[key];
+    inp.title = title;
+    inp.draggable = false;
+    inp.addEventListener('mousedown', e => e.stopPropagation());
+    inp.addEventListener('click', e => e.stopPropagation());
+    inp.addEventListener('change', () => {
+        obj[key] = inp.checked;
+        if (key === 'in_hands' && inp.checked) {
+            clearOtherInHands(obj);
+        }
+        rerender();
+    });
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    lbl.title = title;
+    wrap.appendChild(inp);
+    wrap.appendChild(lbl);
+    return wrap;
+}
+
+// Снимает in_hands со всех предметов активного сета кроме currentItem.
+// Гарантирует "только один в руках" UX без излишеств — мод тоже умеет
+// "последний выигрывает" если по какой-то причине несколько отмечены.
+function clearOtherInHands(currentItem) {
+    const set = activeSet();
+    if (!set) return;
+    function walk(items) {
+        for (const it of items) {
+            if (it !== currentItem && it.in_hands) {
+                it.in_hands = false;
+            }
+            if (it.choices) walk(it.choices);
+            if (it.attachments) walk(it.attachments);
+            if (it.cargo) walk(it.cargo);
+        }
+    }
+    walk(set.items || []);
 }
 
 function makeField(label, title, obj, key, kind, cls = '') {
@@ -883,6 +951,11 @@ function normalizeItem(it) {
         quantity: it.quantity ?? -1,
         ammoCount: it.ammoCount ?? -1,
         quickBar: it.quickBar ?? -1,
+        // Legacy migration: для старых loadouts.json без поля in_hands —
+        // если quickBar=0 И это primary weapon, ставим in_hands=true.
+        // Сохраняет старое мод-поведение (quickBar=0+weapon → в руки) при
+        // переходе на явное поле in_hands.
+        in_hands: it.in_hands ?? ((it.quickBar === 0) && classifyItem(it.type ?? '') === 'Weapon_Primary'),
         choices: (it.choices || []).map(normalizeItem),
         attachments: (it.attachments || []).map(normalizeItem),
         cargo: (it.cargo || []).map(normalizeItem)
